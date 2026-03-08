@@ -1,14 +1,35 @@
-import { useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getTrip, deleteTrip } from '../lib/storage';
-import { ArrowLeft, Trash2, MapPin, Clock, Thermometer, Eye, Fish } from 'lucide-react';
+import type { Trip } from '../types';
+import { ArrowLeft, Trash2, MapPin, Clock, Thermometer, Eye, Fish, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import ConditionsBadges from '../components/ui/ConditionsBadges';
 
 export default function TripDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const trip = useMemo(() => id ? getTrip(id) : null, [id]);
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      if (!id) { setLoading(false); return; }
+      const t = await getTrip(id);
+      setTrip(t);
+      setLoading(false);
+    }
+    load();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
 
   if (!trip) {
     return (
@@ -19,10 +40,16 @@ export default function TripDetail() {
     );
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (confirm('Delete this trip? This cannot be undone.')) {
-      deleteTrip(trip.id);
-      navigate('/trips');
+      setDeleting(true);
+      try {
+        await deleteTrip(trip.id);
+        navigate('/trips');
+      } catch (e) {
+        console.error('Delete failed:', e);
+        setDeleting(false);
+      }
     }
   };
 
@@ -34,8 +61,8 @@ export default function TripDetail() {
         <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
-        <button onClick={handleDelete} className="text-slate-400 hover:text-red-500 transition-colors">
-          <Trash2 className="w-4 h-4" />
+        <button onClick={handleDelete} disabled={deleting} className="text-slate-400 hover:text-red-500 transition-colors">
+          {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
         </button>
       </div>
 
@@ -59,7 +86,7 @@ export default function TripDetail() {
       {/* Water Conditions */}
       <Section title="Water Conditions">
         <div className="grid grid-cols-2 gap-3">
-          <InfoItem icon={Thermometer} label="Water Temp" value={`${trip.water_temp_f}°F`} />
+          <InfoItem icon={Thermometer} label="Water Temp" value={`${trip.water_temp_f}\u00B0F`} />
           <InfoItem icon={Eye} label="Clarity" value={`${trip.water_clarity_inches}"`} />
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -92,7 +119,7 @@ export default function TripDetail() {
                     : 'bg-slate-100 text-slate-600'
                 }`}
               >
-                {l} {trip.lures_caught_fish.includes(l) && '✓'}
+                {l} {trip.lures_caught_fish.includes(l) && '\u2713'}
               </span>
             ))}
           </div>
@@ -105,7 +132,7 @@ export default function TripDetail() {
           <p className="text-sm text-slate-400 italic">No catches recorded</p>
         ) : (
           <div className="space-y-2">
-            {(trip.fish_catches || []).map((fc, i) => (
+            {(trip.fish_catches || []).map((fc) => (
               <div key={fc.id} className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
                 <div className="flex items-center gap-2">
                   <Fish className="w-4 h-4 text-blue-400" />

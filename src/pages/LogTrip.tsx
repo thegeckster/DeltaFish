@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { TripFormData, emptyTripForm } from '../types';
-import { saveTrip, saveConditions } from '../lib/storage';
+import { saveTrip, saveConditions, getTripCount } from '../lib/storage';
 import { enrichTrip } from '../lib/enrichment';
 import StepIndicator from '../components/ui/StepIndicator';
 import StepBasics from '../components/trip-form/StepBasics';
@@ -35,7 +35,6 @@ export default function LogTrip() {
   const handleVoiceParsed = (data: Partial<TripFormData>, transcript: string) => {
     setFormData(prev => {
       const merged = { ...prev };
-      // Only overwrite fields that have actual data from voice
       for (const [key, value] of Object.entries(data)) {
         if (value !== null && value !== undefined && value !== '' &&
             !(Array.isArray(value) && value.length === 0)) {
@@ -46,7 +45,6 @@ export default function LogTrip() {
     });
     setVoiceTranscript(transcript);
     setShowVoice(false);
-    // Jump to review step so user can verify parsed data
     setStep(STEPS.length - 1);
   };
 
@@ -73,10 +71,10 @@ export default function LogTrip() {
     setSaving(true);
 
     try {
-      const tripId = saveTrip(formData);
+      const tripId = await saveTrip(formData);
 
-      const trips = JSON.parse(localStorage.getItem('deltafish_trips') || '[]');
-      setTripCount(trips.length);
+      const count = await getTripCount();
+      setTripCount(count);
 
       setEnriching(true);
       try {
@@ -86,7 +84,7 @@ export default function LogTrip() {
           formData.end_time,
           parseFloat(formData.water_temp_f)
         );
-        saveConditions(tripId, conditions);
+        await saveConditions(tripId, conditions);
       } catch (e) {
         console.warn('Enrichment failed:', e);
       }
@@ -112,7 +110,6 @@ export default function LogTrip() {
 
   return (
     <div>
-      {/* Voice Recorder Overlay */}
       {showVoice && (
         <VoiceRecorder
           onParsed={handleVoiceParsed}
@@ -120,7 +117,6 @@ export default function LogTrip() {
         />
       )}
 
-      {/* Voice button */}
       {!showVoice && step === 0 && (
         <button
           onClick={() => setShowVoice(true)}
@@ -131,7 +127,6 @@ export default function LogTrip() {
         </button>
       )}
 
-      {/* Transcript banner */}
       {voiceTranscript && (
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-xs text-blue-600 font-medium mb-1">Voice transcript:</p>

@@ -1,13 +1,36 @@
-import { useMemo, useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { getTrips } from '../lib/storage';
-import { Fish, ChevronRight, Search, SlidersHorizontal } from 'lucide-react';
+import { getTrips, getAllCatches } from '../lib/storage';
+import type { Trip, FishCatch } from '../types';
+import { Fish, ChevronRight, Search, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function MyTrips() {
-  const allTrips = useMemo(() => getTrips().sort((a, b) => b.date_fished.localeCompare(a.date_fished)), []);
+  const [allTrips, setAllTrips] = useState<Trip[]>([]);
+  const [catches, setCatches] = useState<FishCatch[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'fish' | 'weight'>('date');
+
+  useEffect(() => {
+    async function load() {
+      const [t, c] = await Promise.all([getTrips(), getAllCatches()]);
+      setAllTrips(t.sort((a, b) => b.date_fished.localeCompare(a.date_fished)));
+      setCatches(c);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  const tripStats = useMemo(() => {
+    const stats: Record<string, { count: number; weight: number }> = {};
+    catches.forEach(c => {
+      if (!stats[c.trip_id]) stats[c.trip_id] = { count: 0, weight: 0 };
+      stats[c.trip_id].count++;
+      stats[c.trip_id].weight += c.weight_lbs || 0;
+    });
+    return stats;
+  }, [catches]);
 
   const trips = useMemo(() => {
     let filtered = allTrips;
@@ -21,14 +44,6 @@ export default function MyTrips() {
       );
     }
 
-    const catches = JSON.parse(localStorage.getItem('deltafish_catches') || '[]');
-    const tripStats: Record<string, { count: number; weight: number }> = {};
-    catches.forEach((c: any) => {
-      if (!tripStats[c.trip_id]) tripStats[c.trip_id] = { count: 0, weight: 0 };
-      tripStats[c.trip_id].count++;
-      tripStats[c.trip_id].weight += c.weight_lbs || 0;
-    });
-
     if (sortBy === 'fish') {
       filtered = [...filtered].sort((a, b) => (tripStats[b.id]?.count || 0) - (tripStats[a.id]?.count || 0));
     } else if (sortBy === 'weight') {
@@ -40,7 +55,15 @@ export default function MyTrips() {
       fishCount: tripStats[t.id]?.count || 0,
       totalWeight: Math.round((tripStats[t.id]?.weight || 0) * 10) / 10,
     }));
-  }, [allTrips, search, sortBy]);
+  }, [allTrips, search, sortBy, tripStats]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
 
   if (allTrips.length === 0) {
     return (
@@ -108,7 +131,7 @@ export default function MyTrips() {
                 <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
                   <span>{trip.fishCount} fish</span>
                   {trip.totalWeight > 0 && <span>{trip.totalWeight} lbs</span>}
-                  <span>{trip.water_temp_f}°F</span>
+                  <span>{trip.water_temp_f}&deg;F</span>
                   {trip.lures_caught_fish.length > 0 && (
                     <span className="truncate">{trip.lures_caught_fish[0]}</span>
                   )}

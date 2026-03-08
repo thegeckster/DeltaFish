@@ -1,20 +1,38 @@
-import { useState, useMemo } from 'react';
-import { getSettings, saveSettings, exportTripsCSV, exportTripsJSON, getTrips, AppSettings } from '../lib/storage';
-import { Save, Download, Key, MapPin, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { getSettings, saveSettings, exportTripsCSV, exportTripsJSON, getTripCount, AppSettings } from '../lib/storage';
+import { supabase } from '../lib/supabase';
+import { Save, Download, Key, MapPin, CheckCircle, Loader2, LogOut } from 'lucide-react';
 
 export default function Settings() {
-  const [settings, setSettings] = useState<AppSettings>(() => getSettings());
+  const [settings, setSettings] = useState<AppSettings>({ openai_api_key: '', default_launch_location: '', custom_lures: [] });
   const [saved, setSaved] = useState(false);
-  const tripCount = useMemo(() => getTrips().length, []);
+  const [saving, setSaving] = useState(false);
+  const [tripCount, setTripCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
-  const handleSave = () => {
-    saveSettings(settings);
+  useEffect(() => {
+    async function load() {
+      const [s, count] = await Promise.all([getSettings(), getTripCount()]);
+      setSettings(s);
+      setTripCount(count);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await saveSettings(settings);
+    setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const handleExportCSV = () => {
-    const csv = exportTripsCSV();
+  const handleExportCSV = async () => {
+    setExporting(true);
+    const csv = await exportTripsCSV();
+    setExporting(false);
     if (!csv) return alert('No trips to export');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -25,8 +43,10 @@ export default function Settings() {
     URL.revokeObjectURL(url);
   };
 
-  const handleExportJSON = () => {
-    const json = exportTripsJSON();
+  const handleExportJSON = async () => {
+    setExporting(true);
+    const json = await exportTripsJSON();
+    setExporting(false);
     if (json === '[]') return alert('No trips to export');
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -36,6 +56,18 @@ export default function Settings() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -78,10 +110,11 @@ export default function Settings() {
         {/* Save Button */}
         <button
           onClick={handleSave}
+          disabled={saving}
           className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
         >
-          {saved ? <CheckCircle className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-          {saved ? 'Saved!' : 'Save Settings'}
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <CheckCircle className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+          {saved ? 'Saved!' : saving ? 'Saving...' : 'Save Settings'}
         </button>
 
         {/* Data Management */}
@@ -90,6 +123,7 @@ export default function Settings() {
           <div className="space-y-2">
             <button
               onClick={handleExportCSV}
+              disabled={exporting}
               className="w-full py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
             >
               <Download className="w-4 h-4" />
@@ -97,6 +131,7 @@ export default function Settings() {
             </button>
             <button
               onClick={handleExportJSON}
+              disabled={exporting}
               className="w-full py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
             >
               <Download className="w-4 h-4" />
@@ -104,6 +139,15 @@ export default function Settings() {
             </button>
           </div>
         </div>
+
+        {/* Sign Out */}
+        <button
+          onClick={handleSignOut}
+          className="w-full py-2.5 bg-red-50 text-red-600 border border-red-200 rounded-lg font-medium hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+        >
+          <LogOut className="w-4 h-4" />
+          Sign Out
+        </button>
       </div>
     </div>
   );

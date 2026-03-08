@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Mic, Square, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { transcribeAudio, parseTranscript } from '../lib/voice';
 import { getSettings } from '../lib/storage';
@@ -9,19 +9,26 @@ interface VoiceRecorderProps {
   onCancel: () => void;
 }
 
-type RecordingState = 'idle' | 'recording' | 'transcribing' | 'parsing' | 'done' | 'error';
+type RecordingState = 'idle' | 'recording' | 'transcribing' | 'parsing' | 'done' | 'error' | 'checking';
 
 export default function VoiceRecorder({ onParsed, onCancel }: VoiceRecorderProps) {
-  const [state, setState] = useState<RecordingState>('idle');
+  const [state, setState] = useState<RecordingState>('checking');
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState('');
   const [transcript, setTranscript] = useState('');
+  const [hasApiKey, setHasApiKey] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const settings = getSettings();
-  const hasApiKey = !!settings.openai_api_key;
+  useEffect(() => {
+    async function checkKey() {
+      const settings = await getSettings();
+      setHasApiKey(!!settings.openai_api_key);
+      setState('idle');
+    }
+    checkKey();
+  }, []);
 
   const startRecording = useCallback(async () => {
     try {
@@ -31,7 +38,6 @@ export default function VoiceRecorder({ onParsed, onCancel }: VoiceRecorderProps
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // Detect supported mime type
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/mp4')
@@ -46,7 +52,6 @@ export default function VoiceRecorder({ onParsed, onCancel }: VoiceRecorderProps
       };
 
       mediaRecorder.onstop = async () => {
-        // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
         if (timerRef.current) clearInterval(timerRef.current);
 
@@ -54,12 +59,12 @@ export default function VoiceRecorder({ onParsed, onCancel }: VoiceRecorderProps
         await processAudio(audioBlob);
       };
 
-      mediaRecorder.start(1000); // Collect data every second
+      mediaRecorder.start(1000);
       setState('recording');
 
       timerRef.current = setInterval(() => {
         setElapsed(prev => {
-          if (prev >= 300) { // 5 minute max
+          if (prev >= 300) {
             stopRecording();
             return prev;
           }
@@ -80,17 +85,14 @@ export default function VoiceRecorder({ onParsed, onCancel }: VoiceRecorderProps
 
   const processAudio = async (audioBlob: Blob) => {
     try {
-      // Step 1: Transcribe
       setState('transcribing');
       const text = await transcribeAudio(audioBlob);
       setTranscript(text);
 
-      // Step 2: Parse
       setState('parsing');
       const parsed = await parseTranscript(text);
 
       setState('done');
-      // Short delay so user sees the success state
       setTimeout(() => onParsed(parsed, text), 800);
     } catch (err: any) {
       setError(err.message || 'Processing failed');
@@ -103,6 +105,14 @@ export default function VoiceRecorder({ onParsed, onCancel }: VoiceRecorderProps
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
+
+  if (state === 'checking') {
+    return (
+      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+        <Loader2 className="w-8 h-8 text-white animate-spin" />
+      </div>
+    );
+  }
 
   if (!hasApiKey) {
     return (
@@ -126,7 +136,6 @@ export default function VoiceRecorder({ onParsed, onCancel }: VoiceRecorderProps
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/95 flex flex-col items-center justify-center p-6">
-      {/* Close button */}
       <button
         onClick={() => {
           if (state === 'recording') stopRecording();
@@ -138,7 +147,6 @@ export default function VoiceRecorder({ onParsed, onCancel }: VoiceRecorderProps
         Cancel
       </button>
 
-      {/* Idle state */}
       {state === 'idle' && (
         <>
           <p className="text-slate-300 text-center mb-8 max-w-xs">
@@ -155,7 +163,6 @@ export default function VoiceRecorder({ onParsed, onCancel }: VoiceRecorderProps
         </>
       )}
 
-      {/* Recording state */}
       {state === 'recording' && (
         <>
           <div className="mb-8 text-center">
@@ -174,7 +181,6 @@ export default function VoiceRecorder({ onParsed, onCancel }: VoiceRecorderProps
         </>
       )}
 
-      {/* Processing states */}
       {(state === 'transcribing' || state === 'parsing') && (
         <div className="text-center">
           <Loader2 className="w-16 h-16 text-blue-500 animate-spin mx-auto mb-4" />
@@ -195,7 +201,6 @@ export default function VoiceRecorder({ onParsed, onCancel }: VoiceRecorderProps
         </div>
       )}
 
-      {/* Done state */}
       {state === 'done' && (
         <div className="text-center">
           <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
@@ -204,7 +209,6 @@ export default function VoiceRecorder({ onParsed, onCancel }: VoiceRecorderProps
         </div>
       )}
 
-      {/* Error state */}
       {state === 'error' && (
         <div className="text-center max-w-sm">
           <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />

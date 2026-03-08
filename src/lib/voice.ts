@@ -40,13 +40,12 @@ If they mention a weight like "three pounder" or "three pound fish", record weig
 Return ONLY valid JSON, no markdown formatting, no code fences.`;
 
 export async function transcribeAudio(audioBlob: Blob): Promise<string> {
-  const settings = getSettings();
+  const settings = await getSettings();
   if (!settings.openai_api_key) {
     throw new Error('OpenAI API key not configured. Go to Settings to add it.');
   }
 
   const formData = new FormData();
-  // Determine file extension based on mime type
   const ext = audioBlob.type.includes('mp4') ? 'mp4' :
               audioBlob.type.includes('webm') ? 'webm' : 'wav';
   formData.append('file', audioBlob, `recording.${ext}`);
@@ -71,7 +70,7 @@ export async function transcribeAudio(audioBlob: Blob): Promise<string> {
 }
 
 export async function parseTranscript(transcript: string): Promise<Partial<TripFormData>> {
-  const settings = getSettings();
+  const settings = await getSettings();
   if (!settings.openai_api_key) {
     throw new Error('OpenAI API key not configured.');
   }

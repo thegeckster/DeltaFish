@@ -1,65 +1,37 @@
-import { useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getTrips, getSettings } from '../lib/storage';
-import { PlusCircle, Mic, Fish, Trophy, TrendingUp, Calendar } from 'lucide-react';
+import { getTrips, getSettings, getAllCatches } from '../lib/storage';
+import type { Trip, FishCatch } from '../types';
+import type { AppSettings } from '../lib/storage';
+import { PlusCircle, Mic, Fish, Trophy, TrendingUp, Calendar, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function Dashboard() {
-  const trips = useMemo(() => getTrips(), []);
-  const settings = useMemo(() => getSettings(), []);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [catches, setCatches] = useState<FishCatch[]>([]);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const stats = useMemo(() => {
-    if (trips.length === 0) return null;
+  useEffect(() => {
+    async function load() {
+      const [t, c, s] = await Promise.all([getTrips(), getAllCatches(), getSettings()]);
+      setTrips(t);
+      setCatches(c);
+      setSettings(s);
+      setLoading(false);
+    }
+    load();
+  }, []);
 
-    const allCatches = trips.flatMap(t => {
-      const catches = JSON.parse(localStorage.getItem('deltafish_catches') || '[]');
-      return catches.filter((c: any) => c.trip_id === t.id);
-    });
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
 
-    const totalFish = allCatches.length;
-    const totalWeight = allCatches.reduce((sum: number, c: any) => sum + (c.weight_lbs || 0), 0);
-    const biggestFish = allCatches.reduce((max: number, c: any) => Math.max(max, c.weight_lbs || 0), 0);
-
-    // Most productive lure
-    const lureCounts: Record<string, number> = {};
-    allCatches.forEach((c: any) => {
-      if (c.lure_used) {
-        lureCounts[c.lure_used] = (lureCounts[c.lure_used] || 0) + 1;
-      }
-    });
-    const topLure = Object.entries(lureCounts).sort((a, b) => b[1] - a[1])[0];
-
-    // Best trip
-    const tripCatchCounts: Record<string, number> = {};
-    allCatches.forEach((c: any) => {
-      tripCatchCounts[c.trip_id] = (tripCatchCounts[c.trip_id] || 0) + 1;
-    });
-    const bestTripId = Object.entries(tripCatchCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-    const bestTrip = trips.find(t => t.id === bestTripId);
-
-    // This year
-    const thisYear = new Date().getFullYear();
-    const tripsThisYear = trips.filter(t => new Date(t.date_fished).getFullYear() === thisYear).length;
-    const thisMonth = new Date().getMonth();
-    const tripsThisMonth = trips.filter(t => {
-      const d = new Date(t.date_fished);
-      return d.getFullYear() === thisYear && d.getMonth() === thisMonth;
-    }).length;
-
-    return {
-      totalTrips: trips.length,
-      totalFish,
-      totalWeight: Math.round(totalWeight * 10) / 10,
-      biggestFish: Math.round(biggestFish * 10) / 10,
-      topLure: topLure ? topLure[0] : null,
-      topLureCount: topLure ? topLure[1] : 0,
-      bestTrip,
-      bestTripFishCount: bestTripId ? tripCatchCounts[bestTripId] : 0,
-      tripsThisYear,
-      tripsThisMonth,
-    };
-  }, [trips]);
-
+  const stats = trips.length > 0 ? computeStats(trips, catches) : null;
   const lastTrip = trips.length > 0 ? trips.sort((a, b) => b.date_fished.localeCompare(a.date_fished))[0] : null;
 
   return (
@@ -123,11 +95,11 @@ export default function Dashboard() {
             <Link to={`/trips/${lastTrip.id}`} className="block bg-white border border-slate-200 rounded-xl p-4 mb-4 hover:shadow-sm transition-shadow">
               <h3 className="text-sm font-medium text-slate-500 mb-1">Last Trip</h3>
               <p className="text-base font-bold text-slate-800">{format(new Date(lastTrip.date_fished), 'MMMM d, yyyy')}</p>
-              <p className="text-sm text-slate-600">{lastTrip.launch_location} &middot; {lastTrip.water_temp_f}°F</p>
+              <p className="text-sm text-slate-600">{lastTrip.launch_location} &middot; {lastTrip.water_temp_f}&deg;F</p>
             </Link>
           )}
 
-          {!settings.openai_api_key && (
+          {settings && !settings.openai_api_key && (
             <Link to="/settings" className="block bg-amber-50 border border-amber-200 rounded-xl p-4">
               <p className="text-sm font-medium text-amber-800">Set up Voice Logging</p>
               <p className="text-xs text-amber-600 mt-0.5">Add your OpenAI API key in Settings to enable voice trip logging</p>
@@ -137,6 +109,33 @@ export default function Dashboard() {
       )}
     </div>
   );
+}
+
+function computeStats(trips: Trip[], catches: FishCatch[]) {
+  const totalFish = catches.length;
+  const totalWeight = catches.reduce((sum, c) => sum + (c.weight_lbs || 0), 0);
+  const biggestFish = catches.reduce((max, c) => Math.max(max, c.weight_lbs || 0), 0);
+
+  const lureCounts: Record<string, number> = {};
+  catches.forEach(c => {
+    if (c.lure_used) {
+      lureCounts[c.lure_used] = (lureCounts[c.lure_used] || 0) + 1;
+    }
+  });
+  const topLure = Object.entries(lureCounts).sort((a, b) => b[1] - a[1])[0];
+
+  const thisYear = new Date().getFullYear();
+  const tripsThisYear = trips.filter(t => new Date(t.date_fished).getFullYear() === thisYear).length;
+
+  return {
+    totalTrips: trips.length,
+    totalFish,
+    totalWeight: Math.round(totalWeight * 10) / 10,
+    biggestFish: Math.round(biggestFish * 10) / 10,
+    topLure: topLure ? topLure[0] : null,
+    topLureCount: topLure ? topLure[1] : 0,
+    tripsThisYear,
+  };
 }
 
 function StatCard({ icon: Icon, label, value, color }: { icon: any; label: string; value: string | number; color: string }) {
