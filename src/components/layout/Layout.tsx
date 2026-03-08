@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { Fish, PlusCircle, List, BarChart3, Settings } from 'lucide-react';
+import { Fish, PlusCircle, List, BarChart3, Sparkles, Settings } from 'lucide-react';
 
 export default function Layout() {
   const location = useLocation();
@@ -9,6 +9,7 @@ export default function Layout() {
     { to: '/log', icon: PlusCircle, label: 'Log Trip' },
     { to: '/trips', icon: List, label: 'Trips' },
     { to: '/analysis', icon: BarChart3, label: 'Analysis' },
+    { to: '/ask', icon: Sparkles, label: 'Ask AI' },
     { to: '/settings', icon: Settings, label: 'Settings' },
   ];
 

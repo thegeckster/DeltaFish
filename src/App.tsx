@@ -5,6 +5,7 @@ import LogTrip from './pages/LogTrip'
 import MyTrips from './pages/MyTrips'
 import TripDetail from './pages/TripDetail'
 import Analysis from './pages/Analysis'
+import AskAI from './pages/AskAI'
 import Settings from './pages/Settings'
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
         <Route path="/trips" element={<MyTrips />} />
         <Route path="/trips/:id" element={<TripDetail />} />
         <Route path="/analysis" element={<Analysis />} />
+        <Route path="/ask" element={<AskAI />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>
